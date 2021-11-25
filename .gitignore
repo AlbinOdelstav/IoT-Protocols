@@ -1,0 +1,13 @@
+CoAP Client/CoAP\ Client.sln
+CoAP Client/Release/
+CoAP Client/.vs/
+CoAP Client/CoAP\ Client/Release/
+
+MQTT Broker/MQTT\ Broker.sln
+MQTT Broker/Release/
+MQTT Broker/.vs/
+MQTT Broker/MQTT\ Broker/Release/
+
+*.vcxproj
+*.filters
+*.user
