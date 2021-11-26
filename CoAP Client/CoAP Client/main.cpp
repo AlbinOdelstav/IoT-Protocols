@@ -6,7 +6,6 @@
 #include <string>
 #include <time.h>
 
-#include "Socket.h"
 #include "coap.h"
 #include "socket.h"
 
@@ -119,23 +118,22 @@ int main(int argc, char *argv[]) {
 		std::cout << "\nEnter payload: ";
 		std::getline(std::cin, payload);
 
-		Option option(OptionType::UriPath, path, path.getString().length());
+		Option option(OptionType::UriPath, path, coap.optionNameLookup[OptionType::UriPath], path.getString().length());
 		options.push_back(option);
 
 		if (contentFormat!= 0) {
 			const int length = contentFormat == ContentFormatType::textPlainCharsetUtf8 ? 0 : 1;
-			Option contentFormatOption(OptionType::ContentFormat, contentFormat, length);
+			Option contentFormatOption(OptionType::ContentFormat, contentFormat, coap.optionNameLookup[OptionType::ContentFormat], length);
 			options.push_back(contentFormatOption);
 		}
 
 		// std::cout << "Confirm: ";
 
-		coap.incrementMessageID();
-
 		CoapMessage coapMessage(coap.getVersion(), type, code, coap.getMessageID(), 0, options, payload);
 		std::vector<unsigned char> binaryCoapMessage = coap.encodeCoapMessage(coapMessage);
 		std::vector<unsigned char> response = socket.send(binaryCoapMessage);
 		CoapMessage responseDecoded = coap.decodeCoapMessage(response);
+		coap.incrementMessageID();
 
 		std::cout << responseDecoded << "\n";
 	}

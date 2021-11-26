@@ -1,6 +1,7 @@
+#pragma once
 #include "option_value.h"
 
-OptionValue::OptionValue() : stringValue(0), intValue(0), valueType(INT_TYPE) {}
+OptionValue::OptionValue() : stringValue(""), intValue(0), valueType(INT_TYPE) {}
 
 OptionValue::OptionValue(OptionValueType valueType)
 	: stringValue(), intValue(0), valueType(valueType) {}
