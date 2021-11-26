@@ -1,3 +1,4 @@
+#pragma once
 #include "coap_message.h"
 
 CoapMessage::CoapMessage() {
@@ -81,8 +82,8 @@ void CoapMessage::setPayload(std::string payload) {
 	this->payload = payload;
 }
 
-Option::Option(OptionType optionType, OptionValue value, uint16_t length)
-	: optionType(optionType), value(value), length(length) {}
+Option::Option(OptionType optionType, OptionValue value, std::string name, uint16_t length)
+	: optionType(optionType), value(value), name(name), length(length) {}
 
 OptionType Option::getOptionType() const {
 	return optionType;
@@ -102,6 +103,10 @@ OptionValueType Option::getValueType() const {
 
 uint16_t Option::getLength() const{
 	return length;
+}
+
+std::string Option::getName() const {
+	return name;
 }
 
 void Option::setOptionType(OptionType optionType) {
@@ -124,6 +129,10 @@ void Option::setLength(uint16_t length) {
 	this->length = length;
 }
 
+void Option::setName(std::string name) {
+	this->name = name;
+}
+
 std::ostream& operator<<(std::ostream& os, const CoapMessage& msg) {
 	os << "\n-----------------------------\n";
 	os << "         COAP MESSAGE        \n";
@@ -137,7 +146,7 @@ std::ostream& operator<<(std::ostream& os, const CoapMessage& msg) {
 	os << "\n";
 
 	for (size_t i = 0; i < msg.getOptions().size(); ++i) {
-		os << "Option #" << (i + 1) << ": Type " << std::to_string(msg.getOptions()[i].getOptionType()) << "\n";
+		os << "Option #" << (i + 1) << ": " << msg.getOptions()[i].getName() << "\n";
 		os << "  Length: " + std::to_string(msg.getOptions()[i].getLength()) + "\n";
 		if (msg.getOptions()[i].getValueType() == STRING_TYPE) {
 			os << "  Value: " + msg.getOptions()[i].getString() + "\n";
@@ -150,7 +159,6 @@ std::ostream& operator<<(std::ostream& os, const CoapMessage& msg) {
 	os << "Payload: ";
 	os << msg.payload << "\n";
 	os << "\n-----------------------------\n";
-
 
 	return os;
 }

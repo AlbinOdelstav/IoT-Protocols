@@ -1,4 +1,5 @@
 #pragma once
+#include <map>
 
 enum Type : uint8_t {
 	CON = 0,
