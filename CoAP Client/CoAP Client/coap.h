@@ -10,8 +10,6 @@
 class Coap {
 
 public:
-
-	// ??
 	std::map<uint8_t, std::string> codeLookup {
 		{0x1, "GET"},
 		{0x2, "POST"},
@@ -42,6 +40,25 @@ public:
 		{0xA5, "Proxying Not Supported"}
 	};
 
+	std::map<uint8_t, std::string> optionNameLookup{
+	{1, "If-Match"},
+	{3, "Uri-Host"},
+	{4, "ETag"},
+	{5, "If-None-Match"},
+	{7, "Uri-Port"},
+	{8, "Location-Path"},
+	{11, "Uri-Path"},
+	{12, "Content-Format"},
+	{14, "Max-Age"},
+	{15, "Uri-Query"},
+	{17, "Accept"},
+	{20, "Location-Query"},
+	{28, "Size2"},
+	{35, "Proxy-Uri"},
+	{39, "Proxy-Scheme"},
+	{60, "Size1"},
+	};
+
 	unsigned short MASK_VERSION = 0b11000000;
 	unsigned short MASK_TYPE = 0b00110000;
 	unsigned short MASK_TOKEN_LENGTH = 0b00001111;
@@ -56,23 +73,22 @@ public:
 	unsigned short SHIFT_OPTION_DELTA = 4;
 	unsigned short SHIFT_BYTE = 8;
 
+	unsigned short HEADER_DELIMITER = 0xFF;
+
 	std::vector<unsigned char> encodeCoapMessage(CoapMessage& coapMessage);
-	unsigned char generateFirstByteInHeader(CoapMessage& coapMessage);
-	
+	void encodeFirstByteInHeader(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage);
+	void encodeHeader(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage);
+	void encodeMessageID(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage);
+	void encodeOptions(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage);
+
 	CoapMessage decodeCoapMessage(std::vector<unsigned char>& data);
-	std::vector<Option> decodeOptions(std::vector<unsigned char>::iterator& it, const std::vector<unsigned char>::iterator& end);
 	std::vector<Option> decodeOptions(std::vector<unsigned char>& data, int index);
 
 	uint8_t getVersion() const;
 	uint16_t getMessageID() const;
-	std::vector<unsigned char> getBinaryData() const;
-
 	void incrementMessageID();
 
 private:
 	const uint8_t version = 1;
 	uint16_t messageID = rand();
-	void setHeader(CoapMessage& coapMessage);
-
-	std::vector<unsigned char> binaryMessage;
 };
