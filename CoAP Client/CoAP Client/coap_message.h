@@ -7,23 +7,26 @@
 
 struct Option {
 public:
-	Option(OptionType optionType, OptionValue value, uint16_t length);
+	Option(OptionType optionType, OptionValue value, std::string name, uint16_t length);
 	OptionType getOptionType() const;
 	std::string getString() const;
 	uint32_t getInt() const;
 	OptionValueType getValueType() const;
 	uint16_t getLength() const;
+	std::string getName() const;
 
 	void setOptionType(OptionType optionType);
 	void setString(std::string value);
 	void setInt(uint32_t value);
 	void setValueType(OptionValueType valueType);
 	void setLength(uint16_t length);
+	void setName(std::string name);
 
 private:
 	OptionType optionType;
 	OptionValue value;
 	uint16_t length;
+	std::string name;
 };
 
 class CoapMessage {
@@ -59,9 +62,7 @@ private:
 	uint8_t version;
 	Type type;
 	Code code;
-
 	std::vector<Option> options;
-	
 	uint8_t tokenLength;
 	uint32_t token;
 	uint16_t messageID;
