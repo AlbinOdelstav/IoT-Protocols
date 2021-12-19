@@ -41,45 +41,44 @@ public:
 	};
 
 	std::map<uint8_t, std::string> optionNameLookup{
-	{1, "If-Match"},
-	{3, "Uri-Host"},
-	{4, "ETag"},
-	{5, "If-None-Match"},
-	{7, "Uri-Port"},
-	{8, "Location-Path"},
-	{11, "Uri-Path"},
-	{12, "Content-Format"},
-	{14, "Max-Age"},
-	{15, "Uri-Query"},
-	{17, "Accept"},
-	{20, "Location-Query"},
-	{28, "Size2"},
-	{35, "Proxy-Uri"},
-	{39, "Proxy-Scheme"},
-	{60, "Size1"},
+		{1, "If-Match"},
+		{3, "Uri-Host"},
+		{4, "ETag"},
+		{5, "If-None-Match"},
+		{7, "Uri-Port"},
+		{8, "Location-Path"},
+		{11, "Uri-Path"},
+		{12, "Content-Format"},
+		{14, "Max-Age"},
+		{15, "Uri-Query"},
+		{17, "Accept"},
+		{20, "Location-Query"},
+		{28, "Size2"},
+		{35, "Proxy-Uri"},
+		{39, "Proxy-Scheme"},
+		{60, "Size1"},
 	};
 
-	unsigned short MASK_VERSION = 0b11000000;
-	unsigned short MASK_TYPE = 0b00110000;
-	unsigned short MASK_TOKEN_LENGTH = 0b00001111;
-	unsigned short MASK_DELTA = 0b11110000;
-	unsigned short MASK_OPTION_LENGTH = 0b00001111;
-	unsigned short MASK_MESSAGE_ID_1 = 0b0000000011111111;
-	unsigned short MASK_MESSAGE_ID_2 = 0b1111111100000000;
+	const unsigned char MASK_VERSION = 0b11000000;
+	const unsigned char MASK_TYPE = 0b00110000;
+	const unsigned char MASK_TOKEN_LENGTH = 0b00001111;
+	const unsigned char MASK_DELTA = 0b11110000;
+	const unsigned char MASK_OPTION_LENGTH = 0b00001111;
+	const unsigned short MASK_MESSAGE_ID_1 = 0b0000000011111111;
+	const unsigned short MASK_MESSAGE_ID_2 = 0b1111111100000000;
 
-	unsigned short SHIFT_VERSION = 6;
-	unsigned short SHIFT_TYPE = 4;
-	unsigned short SHIFT_MESSAGE_ID_2 = 8;
-	unsigned short SHIFT_OPTION_DELTA = 4;
-	unsigned short SHIFT_BYTE = 8;
+	const unsigned char SHIFT_VERSION = 6;
+	const unsigned char SHIFT_TYPE = 4;
+	const unsigned char SHIFT_MESSAGE_ID_2 = 8;
+	const unsigned char SHIFT_OPTION_DELTA = 4;
+	const unsigned char SHIFT_BYTE = 8;
 
-	unsigned short HEADER_DELIMITER = 0xFF;
+	const unsigned short HEADER_DELIMITER = 0xFF;
 
 	std::vector<unsigned char> encodeCoapMessage(CoapMessage& coapMessage);
-	void encodeFirstByteInHeader(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage);
-	void encodeHeader(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage);
-	void encodeMessageID(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage);
-	void encodeOptions(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage);
+	void encodeHeader(std::vector<unsigned char>& data, CoapMessage& coapMessage);
+	void encodeMessageID(std::vector<unsigned char>& data, CoapMessage& coapMessage);
+	void encodeOptions(std::vector<unsigned char>& data, CoapMessage& coapMessage);
 
 	CoapMessage decodeCoapMessage(std::vector<unsigned char>& data);
 	std::vector<Option> decodeOptions(std::vector<unsigned char>& data, int index);
