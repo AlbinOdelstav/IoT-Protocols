@@ -2,19 +2,19 @@
 #include "coap.h"
 
 std::vector<unsigned char> Coap::encodeCoapMessage(CoapMessage& coapMessage) {
-	std::vector<unsigned char> binaryMessage;
+	std::vector<unsigned char> data;
 	coapMessage.setMessageID(this->messageID);
-	encodeHeader(binaryMessage, coapMessage);
+	encodeHeader(data, coapMessage);
 	
 	if (coapMessage.getPayload().empty()) {
-		return binaryMessage;
+		return data;
 	}
 	
-	binaryMessage.push_back(HEADER_DELIMITER);
+	data.push_back(HEADER_DELIMITER);
 	for (char byte : coapMessage.getPayload()) {
-		binaryMessage.push_back(byte);
+		data.push_back(byte);
 	}
-	return binaryMessage;
+	return data;
 }
 
 std::vector<Option> Coap::decodeOptions(std::vector<unsigned char>& data, int index) {
@@ -122,49 +122,46 @@ CoapMessage Coap::decodeCoapMessage(std::vector<unsigned char>& data) {
 	return coapMessage;
 }
 
-void Coap::encodeFirstByteInHeader(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage) {
-	unsigned char byte = 0;
-	byte = byte | (coapMessage.getVersion() << SHIFT_VERSION);
-	byte = byte | (coapMessage.getType() << SHIFT_TYPE);
-	byte = byte | coapMessage.getTokenLength();
-	binaryMessage.push_back(byte);
-}
-
-void Coap::encodeOptions(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage) {
+void Coap::encodeOptions(std::vector<unsigned char>& data, CoapMessage& coapMessage) {
 	uint8_t previousType = 0;
 	for (auto option : coapMessage.getOptions()) {
 		unsigned char binaryOptionHeader = 0;
 		uint8_t delta = option.getOptionType() - previousType;
 		binaryOptionHeader = delta << SHIFT_OPTION_DELTA;
 		binaryOptionHeader = binaryOptionHeader | option.getLength();
-		binaryMessage.push_back(binaryOptionHeader);
+		data.push_back(binaryOptionHeader);
 		previousType = option.getOptionType();
 
 		if (option.getValueType() == OptionValueType::STRING_TYPE) {
 			for (unsigned char c : option.getString()) {
-				binaryMessage.push_back(c);
+				data.push_back(c);
 			}
 		}
 		else {
 			if (option.getLength() > 0) {
-				binaryMessage.push_back(option.getInt());
+				data.push_back(option.getInt());
 			}
 		}
 	}
 }
 
-void Coap::encodeMessageID(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage) {
-	unsigned char binaryMessageID = coapMessage.getMessageID() & MASK_MESSAGE_ID_1;
-	unsigned char binaryMessageID2 = ((coapMessage.getMessageID() & MASK_MESSAGE_ID_2) >> SHIFT_MESSAGE_ID_2);
-	binaryMessage.push_back(binaryMessageID);
-	binaryMessage.push_back(binaryMessageID2);
+void Coap::encodeMessageID(std::vector<unsigned char>& data, CoapMessage& coapMessage) {
+	unsigned char dataID = coapMessage.getMessageID() & MASK_MESSAGE_ID_1;
+	unsigned char dataID2 = ((coapMessage.getMessageID() & MASK_MESSAGE_ID_2) >> SHIFT_MESSAGE_ID_2);
+	data.push_back(dataID);
+	data.push_back(dataID2);
 }
 
-void Coap::encodeHeader(std::vector<unsigned char>& binaryMessage, CoapMessage& coapMessage) {
-	encodeFirstByteInHeader(binaryMessage, coapMessage);
-	binaryMessage.push_back(coapMessage.getCode());
-	encodeMessageID(binaryMessage, coapMessage);
-	encodeOptions(binaryMessage, coapMessage);
+void Coap::encodeHeader(std::vector<unsigned char>& data, CoapMessage& coapMessage) {
+	unsigned char byte = 0;
+	byte = byte | (coapMessage.getVersion() << SHIFT_VERSION);
+	byte = byte | (coapMessage.getType() << SHIFT_TYPE);
+	byte = byte | coapMessage.getTokenLength();
+	data.push_back(byte);
+	data.push_back(coapMessage.getCode());
+
+	encodeMessageID(data, coapMessage);
+	encodeOptions(data, coapMessage);
 }
 
 uint8_t Coap::getVersion() const {
