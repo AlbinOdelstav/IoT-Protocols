@@ -10,6 +10,7 @@ MQTT Broker/.vs/
 MQTT Broker/MQTT\ Broker/Release/
 MQTT Broker/MQTT\ Broker/Debug/
 
+
 *.vcxproj
 *.filters
 *.user
