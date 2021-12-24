@@ -5,8 +5,11 @@ CoAP Client/CoAP\ Client/Release/
 
 MQTT Broker/MQTT\ Broker.sln
 MQTT Broker/Release/
+MQTT Broker/Debug/
 MQTT Broker/.vs/
 MQTT Broker/MQTT\ Broker/Release/
+MQTT Broker/MQTT\ Broker/Debug/
+
 
 *.vcxproj
 *.filters
