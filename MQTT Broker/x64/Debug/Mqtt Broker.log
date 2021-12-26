@@ -1,4 +1,0 @@
-﻿  mqtt_broker.cpp
-C:\Users\albin\Documents\skola\IoT\IoT-Protocols\MQTT Broker\mqtt broker\mqtt_broker.h(4,10): warning C4067: unexpected tokens following preprocessor directive - expected a newline
-C:\Users\albin\Documents\skola\IoT\IoT-Protocols\MQTT Broker\mqtt broker\mqtt_broker.cpp(89,9): warning C4804: '<': unsafe use of type 'bool' in operation
-  Mqtt Broker.vcxproj -> C:\Users\albin\Documents\skola\IoT\IoT-Protocols\MQTT Broker\x64\Debug\Mqtt Broker.exe
