@@ -2,7 +2,6 @@
 
 MqttClient::MqttClient() {}
 
-
 MqttClient::~MqttClient() {}
 
 MqttClient::MqttClient(Socket& socket) : socket(socket) {}
@@ -15,6 +14,10 @@ void MqttClient::send(std::vector<unsigned char> msg) {
 std::vector<unsigned char> MqttClient::recv() {
 	auto data = this->socket.recv();
 	return data;
+}
+
+void MqttClient::close() {
+	closesocket(this->socket.getSOCKET());
 }
 
 Socket MqttClient::getSocket() const {
