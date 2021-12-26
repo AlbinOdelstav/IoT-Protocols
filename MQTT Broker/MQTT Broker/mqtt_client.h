@@ -10,7 +10,7 @@ public:
 	MqttClient(Socket& socket);
 	void send(std::vector<unsigned char>);
 	std::vector<unsigned char> recv();
-
+	void close();
 	Socket getSocket() const;
 private:
 	Socket socket;
