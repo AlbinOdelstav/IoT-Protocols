@@ -93,6 +93,11 @@ std::vector<unsigned char> Socket::recv() {
 	std::vector<unsigned char> response(100);
 	if (::recv(socket, (char*)response.data(), response.size(), 0) < 0) {
 		std::cout << "Recv failed: " << WSAGetLastError << "\n";
+		closesocket(socket);
+
+		// Disconnect
+		response[0] = 0b11100000;
+		response[1] = 0b00000000;
 	}
 	return response;
 }
