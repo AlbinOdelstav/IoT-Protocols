@@ -27,14 +27,13 @@ const int Socket::create(const int port) {
 	sockIn.sin_port = htons(port);
 	sockIn.sin_addr.s_addr = INADDR_ANY;
 
-	/*
 	BOOL bOptVal = FALSE;
 	if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char*)& bOptVal, sizeof(bOptVal)) < 0) {
 		perror("setsockopt(SO_REUSEADDR) failed");
 		WSACleanup();
 		exit(EXIT_FAILURE);
 	}
-	*/
+
 	if (bind(socket, (const sockaddr*)& sockIn, sizeof(sockIn)) < 0) {
 		std::cout << "Failed to bind" << WSAGetLastError << "\n";
 		WSACleanup();
@@ -89,17 +88,13 @@ void Socket::send(std::vector<unsigned char>& msg) {
 	}
 }
 
-std::vector<unsigned char> Socket::recv() {
+std::pair<Bytes, short> Socket::recv() {
 	std::vector<unsigned char> response(100);
 	if (::recv(socket, (char*)response.data(), response.size(), 0) < 0) {
 		std::cout << "Recv failed: " << WSAGetLastError << "\n";
-		closesocket(socket);
-
-		// Disconnect
-		response[0] = 0b11100000;
-		response[1] = 0b00000000;
+		return std::make_pair(response, -1); // Here we go with the magic numbers again
 	}
-	return response;
+	return std::make_pair(response, 0);
 }
 
 Socket Socket::listen() {

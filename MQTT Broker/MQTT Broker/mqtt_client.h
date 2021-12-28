@@ -8,8 +8,8 @@ public:
 	MqttClient();
 	~MqttClient();
 	MqttClient(Socket& socket);
-	void send(std::vector<unsigned char>);
-	std::vector<unsigned char> recv();
+	void send(Bytes);
+	std::pair<Bytes, short> recv();
 	void close();
 	Socket getSocket() const;
 
