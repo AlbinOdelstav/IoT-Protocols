@@ -72,11 +72,11 @@ public:
 		unsigned short qos;
 		bool retain;
 		std::string topic;
-		std::string payload;
+		Bytes payload;
 	};
 
 	void start(const unsigned int port);
-	void handleClient(MqttClient);
+	void handleClient(MqttClient&);
 	int handleConnection(MqttClient&, ConnectMessage);
 	int handleSubscribe(MqttClient&, SubscribeMessage);
 	int handleUnsubscribe(MqttClient&, UnsubscribeMessage);
@@ -98,4 +98,5 @@ public:
 
 	bool validateClientId(std::string&);
 	std::map<std::string, std::vector<Subscription>> subscriptions;
+	std::map<std::string, Bytes> retainedMessages;
 };

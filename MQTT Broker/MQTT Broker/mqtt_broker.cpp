@@ -18,13 +18,17 @@ void MqttBroker::start(const unsigned int port) {
 	}
 }
 
-void MqttBroker::handleClient(MqttClient client) {
+void MqttBroker::handleClient(MqttClient& client) {
 	const unsigned short FIXED_HEADER_LENGTH = 2;
-	Bytes data = client.recv();
+	std::pair<Bytes, short> data = client.recv();
+	if (data.second != 0) {
+		client.close();
+		return;
+	}
 
-	if (peekType(data[0]) == Type::CONNECT) {
+	if (peekType(data.first[0]) == Type::CONNECT) {
 		std::cout << "Connect\n";
-		if (handleConnection(client, decodeConnect(data)) != CONNECT_ACCEPTED) {
+		if (handleConnection(client, decodeConnect(data.first)) != CONNECT_ACCEPTED) {
 			std::cout << "Connection failed\n";
 			client.close();
 			return;
@@ -32,11 +36,15 @@ void MqttBroker::handleClient(MqttClient client) {
 	}
 
 	while (true) {
-		Bytes totalData = client.recv();
-		auto dataBegin = totalData.begin();
+		std::pair<Bytes, short> totalData = client.recv();
+		if (totalData.second != 0) {
+			client.close();
+			return;
+		}
+		auto dataBegin = totalData.first.begin();
 		auto dataEnd = (dataBegin + *(dataBegin + 1) + FIXED_HEADER_LENGTH);
 
-		while (dataEnd < totalData.end()) {
+		while (dataEnd < totalData.first.end()) {
 			Bytes data(dataBegin, dataEnd);
 
 			switch (peekType(data[0])) {
@@ -71,12 +79,12 @@ void MqttBroker::handleClient(MqttClient client) {
 
 			case Type::DISCONNECT:
 				std::cout << "Disconnect\n";
-				// unsubscsribe
+				// unsubscsribe?
 
 				client.close();
 				return;
 			}
-			if (!(dataEnd + 1 < totalData.end())) break;
+			if (!(dataEnd + 1 < totalData.first.end())) break;
 			dataBegin = dataEnd;
 			dataEnd = (dataBegin + *(dataBegin + 1) + FIXED_HEADER_LENGTH);
 		}
@@ -129,6 +137,13 @@ int MqttBroker::handleSubscribe(MqttClient& client, SubscribeMessage subMsg) {
 
 	subackMsg.returnCodes = returnCodes;
 	client.send(encodeSubscribeAck(subackMsg));
+
+	for (Topic topic : subMsg.topics) {
+		if (retainedMessages.find(topic.first) != retainedMessages.end()) {
+			client.send(retainedMessages[topic.first]);
+		}
+	}
+
 	return 0;
 }
 
@@ -136,7 +151,6 @@ int MqttBroker::handleUnsubscribe(MqttClient& client, UnsubscribeMessage unsubMs
 	std::cout << "handle unsubscribe\n";
 
 	if (unsubMsg.headerReserved != 2) {
-		// error
 		return -1;
 	}
 
@@ -166,12 +180,13 @@ int MqttBroker::handlePublish(MqttClient& client, Bytes& data) {
 		return QOS_LEVEL_UNEXPECTED;
 	}
 
-	if (msg.retain) {
-		// wait for it
-	}
-	
 	// Dup flag should not be propagated
 	data[0] = data[0] & (0b11110111);
+
+	if (msg.retain) {
+		retainedMessages[msg.topic] = data;
+	}
+	
 	for (auto subscription : subscriptions[msg.topic]) {
 		subscription.first.send(data);
 	}
@@ -350,6 +365,7 @@ MqttBroker::PublishMessage MqttBroker::decodePublish(Bytes& data) {
 		bytePtr = topicEnd;
 		msg.packetIdentifier = (*bytePtr << 8) | *++bytePtr;
 	}
+
 	return msg;
 }
 
