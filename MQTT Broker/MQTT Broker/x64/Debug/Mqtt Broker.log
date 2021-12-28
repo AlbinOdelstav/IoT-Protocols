@@ -1,3 +1,0 @@
-﻿  socket.cpp
-C:\Users\albin\Documents\skola\IoT\IoT-Protocols\MQTT Broker\mqtt broker\socket.cpp(79): warning C4172: returning address of local variable or temporary: address
-  Mqtt Broker.vcxproj -> C:\Users\albin\Documents\skola\IoT\IoT-Protocols\MQTT Broker\x64\Debug\Mqtt Broker.exe
