@@ -20,6 +20,14 @@ void MqttClient::close() {
 	closesocket(this->socket.getSOCKET());
 }
 
+void MqttClient::setClientId(std::string clientId) {
+	this->clientId = clientId;
+}
+
+std::string MqttClient::getClientId() const {
+	return this->clientId;
+}
+
 Socket MqttClient::getSocket() const {
 	return this->socket;
 }

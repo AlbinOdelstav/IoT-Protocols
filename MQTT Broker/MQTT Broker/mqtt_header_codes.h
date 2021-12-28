@@ -36,6 +36,13 @@ enum Subscribe_return_codes: uint8_t {
 	SUBSCRIBE_FAILURE	 = 0x80,
 };
 
+enum Qos_levels : uint8_t {
+	QOS_LEVEL_0 = 0x00,
+	QOS_LEVEL_1 = 0x01,
+	QOS_LEVEL_2 = 0x02,
+	QOS_LEVEL_UNEXPECTED = 0x03,
+};
+
 const uint8_t MASK_TYPE = 0b11110000;
 const uint8_t MASK_DUP = 0b00001000;
 const uint8_t MASK_QOS = 0b00000110;
@@ -44,7 +51,7 @@ const uint8_t MASK_FIXED_HEADER_RESERVED = 0b00001111;
 
 const short SHIFT_TYPE = 4;
 const short SHIFT_DUP = 3;
-const short SHIFT_QOS = 2;
+const short SHIFT_QOS = 1;
 
 // Connect
 const uint8_t MASK_FLAG_USERNAME = 0b10000000;

@@ -21,8 +21,6 @@ void MqttBroker::start(const unsigned int port) {
 void MqttBroker::handleClient(MqttClient client) {
 	const unsigned short FIXED_HEADER_LENGTH = 2;
 	Bytes data = client.recv();
-	auto dataBegin = data.begin();
-	auto dataEnd = (dataBegin + *(dataBegin + 1) + FIXED_HEADER_LENGTH);
 
 	if (peekType(data[0]) == Type::CONNECT) {
 		std::cout << "Connect\n";
@@ -60,8 +58,10 @@ void MqttBroker::handleClient(MqttClient client) {
 
 			case Type::PUBLISH:
 				std::cout << "Publish\n";
-				// handlePublish(client, decodePublish(data));
-				handlePublish(client, data);
+				if (handlePublish(client, data) != 0) {
+					client.close();
+					return;
+				}
 				break;
 
 			case Type::PINGREQ:
@@ -97,6 +97,8 @@ int MqttBroker::handleConnection(MqttClient& client, ConnectMessage conMsg) {
 		connackMsg.returnCode = CONNECT_UNACCEPTABLE_IDENTIFIER;
 		return CONNECT_UNACCEPTABLE_IDENTIFIER;
 	}
+
+	client.setClientId(conMsg.clientId);
 
 	connackMsg.sessionPresent = 1;
 	client.send(encodeConnectAck(connackMsg));
@@ -157,18 +159,51 @@ int MqttBroker::handleUnsubscribe(MqttClient& client, UnsubscribeMessage unsubMs
 	return 0;
 }
 
-void MqttBroker::handlePublish(MqttClient& client, Bytes& data) {
+int MqttBroker::handlePublish(MqttClient& client, Bytes& data) {
 	PublishMessage msg = decodePublish(data);
+	
+	if (msg.qos == QOS_LEVEL_UNEXPECTED) {
+		return QOS_LEVEL_UNEXPECTED;
+	}
+
+	if (msg.retain) {
+		// wait for it
+	}
+	
+	// Dup flag should not be propagated
+	data[0] = data[0] & (0b11110111);
 	for (auto subscription : subscriptions[msg.topic]) {
 		subscription.first.send(data);
 	}
+	
+	/*
+	*			Hol' on
+	* 
+	* 
+	if (msg.qos == QOS_LEVEL_1) {
+		Message ackMsg { PUBACK, msg.packetIdentifier };
+		client.send(encodeMqttMessage(ackMsg));
+	}
+	else if (msg.qos == QOS_LEVEL_2) {
+		Message recMsg { PUBREC, msg.packetIdentifier };
+		client.send(encodeMqttMessage(recMsg));
+
+		// Wait for PUBREL
+		Bytes data = client.recv();
+		if (peekType(data[0]) == PUBREL) {
+			Message compMsg{ PUBCOMP, msg.packetIdentifier };
+			client.send(encodeMqttMessage(compMsg));
+		}
+	}
+	*/
+
+	return 0;
 }
 
-void MqttBroker::handlePing(MqttClient client) {
+void MqttBroker::handlePing(MqttClient& client) {
 	Message sendMsg;
-	sendMsg.type = Type::PINGRESP;
-	Bytes data(2);
-	data[0] = encodeMqttMessage(sendMsg);
+	sendMsg.type = PINGRESP;
+	Bytes data = encodeMqttMessage(sendMsg);
 	client.send(data);
 }
 
@@ -208,16 +243,12 @@ MqttBroker:: ConnectMessage MqttBroker::decodeConnect(Bytes& data) {
 	msg.keepAlive = ((*++bytePtr << 8) | *++bytePtr);
 
 	uint8_t clientIdLength = (*++bytePtr << 8) | *++bytePtr;
-	std::cout << "client identifier length: " << (int)clientIdLength << "\n";
 
 	if (clientIdLength > 0) {
 		bytePtr++;
 		msg.clientId = std::string(bytePtr, bytePtr + clientIdLength);
 		bytePtr = bytePtr + clientIdLength-1;
-		std::cout << "client identifier: " << msg.clientId << "\n";
 	} 
-
-	std::cout << "clientId: " << msg.clientId << "\n";
 
 	if (msg.flags.will) {
 		uint8_t willLength = (*++bytePtr << 8) | *++bytePtr;
@@ -225,45 +256,27 @@ MqttBroker:: ConnectMessage MqttBroker::decodeConnect(Bytes& data) {
 			bytePtr++;
 			msg.clientId = std::string(bytePtr, bytePtr + clientIdLength);
 			bytePtr = bytePtr + clientIdLength - 1;
-			std::cout << "client identifier: " << msg.clientId << "\n";
 		}
 	}
 
 	if (msg.flags.username) {
 		uint8_t usernameLength = (*++bytePtr << 8) | *++bytePtr;
-		std::cout << "usernameLength: " << (int) usernameLength << "\n";
 
 		if (usernameLength > 0) {
 			bytePtr++;
 			msg.username = std::string(bytePtr, bytePtr + usernameLength);
-			std::cout << "username: " << msg.username << "\n";
 			bytePtr = bytePtr + usernameLength - 1;
 		}
 	}
 
 	if (msg.flags.password) {
 		uint8_t passwordLength = (*++bytePtr << 8) | *++bytePtr;
-		std::cout << "passwordLength: " <<(int) passwordLength << "\n";
 
 		if (passwordLength > 0) {
 			bytePtr++;
 			msg.password = std::string(bytePtr, bytePtr + passwordLength);
-			std::cout << "password: " << msg.password << "\n";
 		}
 	}
-
-	std::cout << "\n";
-	std::cout << "Protocol name: " << msg.protocolName << "\n";
-	std::cout << "setProtocolLevel: " << (int)msg.protocolLevel << "\n";
-	std::cout << "username: " << (int)msg.flags.username << "\n";
-	std::cout << "password: " << (int)msg.flags.password << "\n";
-	std::cout << "retain flag: " << (int)msg.flags.willRetain << "\n";
-	std::cout << "qos flag: " << (int)msg.flags.willQos << "\n";
-	std::cout << "will flag: " << (int)msg.flags.will << "\n";
-	std::cout << "clean session flag: " << (int)msg.flags.cleanSession << "\n";
-	std::cout << "reserved flag: " << (int)msg.flags.reserved << "\n";
-	std::cout << "keep alive: " << (int)msg.keepAlive << "\n";
-
 	return msg;
 }
 
@@ -316,6 +329,8 @@ MqttBroker::UnsubscribeMessage MqttBroker::decodeUnsubscribe(Bytes& data) {
 }
 
 MqttBroker::PublishMessage MqttBroker::decodePublish(Bytes& data) {
+	std::cout << "decode publish\n";
+
 	PublishMessage msg;
 	auto bytePtr = data.begin();
 
@@ -324,13 +339,17 @@ MqttBroker::PublishMessage MqttBroker::decodePublish(Bytes& data) {
 	msg.qos = ((*bytePtr & MASK_QOS) >> SHIFT_QOS);
 	msg.retain = (*bytePtr & MASK_RETAIN);
 
-	const short messageLength = *++bytePtr;
-	const auto messageEnd = data.begin() + messageLength;
-
-	const uint16_t topicLength = (*++bytePtr << 8) | *(++bytePtr);
+	const unsigned int messageLength = *++bytePtr;
+	const auto messageEnd = (data.begin() + 2) + messageLength;
+	const unsigned int topicLength = (*++bytePtr << 8) | *(++bytePtr);
+	
 	auto topicEnd = ++bytePtr + topicLength;
 
 	msg.topic = std::string(bytePtr, topicEnd);
+	if (msg.qos == QOS_LEVEL_1 || msg.qos == QOS_LEVEL_2) {
+		bytePtr = topicEnd;
+		msg.packetIdentifier = (*bytePtr << 8) | *++bytePtr;
+	}
 	return msg;
 }
 
@@ -338,15 +357,26 @@ MqttBroker::PublishMessage MqttBroker::decodePublish(Bytes& data) {
 // 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
 bool MqttBroker::validateClientId(std::string& str) {
 	for (char c : str) {
-		if (!std::isalpha(c) || (c < 0 || c > 9))
+		if (!std::isalpha(c) && (c < 0 && c > 9))
 			return false;
 	}
 	return true;
 }
 
-Byte MqttBroker::encodeMqttMessage(Message& msg) {
-	Byte data = 0;
-	data = msg.type << SHIFT_TYPE;
+Bytes MqttBroker::encodeMqttMessage(Message& msg) {
+	std::cout << "msg.packetIdentifier: " << msg.packetIdentifier << "\n";
+	Bytes data;
+	data.push_back(msg.type << SHIFT_TYPE);
+
+	if (msg.packetIdentifier) {
+		data.push_back(2);
+		data.push_back((msg.packetIdentifier & 0b1111111100000000) >> 8);
+		data.push_back(msg.packetIdentifier & 0b0000000011111111);
+	}
+	else {
+		data.push_back(0);
+	}
+
 	return data;
 }
 
