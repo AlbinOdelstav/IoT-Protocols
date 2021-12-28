@@ -23,3 +23,7 @@ void MqttClient::close() {
 Socket MqttClient::getSocket() const {
 	return this->socket;
 }
+
+bool operator==(MqttClient& lhs, MqttClient& rhs) {
+	return lhs == rhs;
+}
