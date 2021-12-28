@@ -12,6 +12,8 @@ public:
 	std::vector<unsigned char> recv();
 	void close();
 	Socket getSocket() const;
+
+	friend bool operator== (MqttClient& lhs, MqttClient& rhs);
 private:
 	Socket socket;
 };
