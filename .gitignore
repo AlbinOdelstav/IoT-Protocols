@@ -10,8 +10,10 @@ MQTT Broker/Debug/
 MQTT Broker/.vs/
 MQTT Broker/MQTT\ Broker/Release/
 MQTT Broker/MQTT\ Broker/Debug/
+MQTT Broker/CppProperties.json
 
 
 *.vcxproj
 *.filters
 *.user
+*.sln
