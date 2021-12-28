@@ -1,14 +1,13 @@
 #include "mqtt_broker.h"
 
 void MqttBroker::start(const unsigned int port) {
-
-	Socket masterSocket;
-	if (masterSocket.create(port) != 0) {
+	Socket listenSocket;
+	if (listenSocket.create(port) != 0) {
 		return;
 	}
 
 	while (true) {
-		Socket socket = masterSocket.listen();
+		Socket socket = listenSocket.listen();
 		if (socket.getSOCKET() == INVALID_SOCKET) {
 			std::cout << "Accept failed with error: " << WSAGetLastError() << "\n";
 			WSACleanup();
@@ -21,6 +20,18 @@ void MqttBroker::start(const unsigned int port) {
 
 void MqttBroker::handleClient(MqttClient client) {
 	const unsigned short FIXED_HEADER_LENGTH = 2;
+	Bytes data = client.recv();
+	auto dataBegin = data.begin();
+	auto dataEnd = (dataBegin + *(dataBegin + 1) + FIXED_HEADER_LENGTH);
+
+	if (peekType(data[0]) == Type::CONNECT) {
+		std::cout << "Connect\n";
+		if (handleConnection(client, decodeConnect(data)) != CONNECT_ACCEPTED) {
+			std::cout << "Connection failed\n";
+			client.close();
+			return;
+		}
+	}
 
 	while (true) {
 		Bytes totalData = client.recv();
@@ -33,15 +44,22 @@ void MqttBroker::handleClient(MqttClient client) {
 			switch (peekType(data[0])) {
 			case Type::SUBSCRIBE:
 				std::cout << "Subscribe\n";
-				handleSubscription(client, decodeSubscribe(data));
+				if (handleSubscribe(client, decodeSubscribe(data)) != 0) {
+					client.close();
+					return;
+				};
 				break;
 
 			case Type::UNSUBSCRIBE:
-				std::cout << "Unsubscribe";
+				std::cout << "Unsubscribe\n";
+				if (handleUnsubscribe(client, decodeUnsubscribe(data)) != 0) {
+					client.close();
+					return;
+				};
 				break;
 
 			case Type::PUBLISH:
-				std::cout << "Publish";
+				std::cout << "Publish\n";
 				// handlePublish(client, decodePublish(data));
 				handlePublish(client, data);
 				break;
@@ -52,17 +70,12 @@ void MqttBroker::handleClient(MqttClient client) {
 				break;
 
 			case Type::DISCONNECT:
-				std::cout << "Disconnect";
+				std::cout << "Disconnect\n";
 				// unsubscsribe
 
 				client.close();
 				return;
-
-			case Type::CONNECT:
-				std::cout << "Connect\n";
-				handleConnection(client, decodeConnect(data));
 			}
-
 			if (!(dataEnd + 1 < totalData.end())) break;
 			dataBegin = dataEnd;
 			dataEnd = (dataBegin + *(dataBegin + 1) + FIXED_HEADER_LENGTH);
@@ -70,41 +83,90 @@ void MqttBroker::handleClient(MqttClient client) {
 	}
 }
 
-void MqttBroker::handleConnection(MqttClient& client, ConnectMessage recvMsg) {
-	ConnectAckMessage sendMsg;
-	sendMsg.setType(Type::CONNACK);
-	client.send(encodeConnectAck(sendMsg));
+int MqttBroker::handleConnection(MqttClient& client, ConnectMessage conMsg) {
+	ConnectAckMessage connackMsg;
+	connackMsg.type = Type::CONNACK;
+
+	// Fix these magic numbers before death hits
+	if (conMsg.protocolName != "MQTT" || conMsg.protocolLevel != 4) {
+		connackMsg.returnCode = CONNECT_UNACCEPTABLE_PROTOCOL_VERSION;
+		return CONNECT_UNACCEPTABLE_PROTOCOL_VERSION;
+	}
+
+	if (!validateClientId(conMsg.clientId)) {
+		connackMsg.returnCode = CONNECT_UNACCEPTABLE_IDENTIFIER;
+		return CONNECT_UNACCEPTABLE_IDENTIFIER;
+	}
+
+	connackMsg.sessionPresent = 1;
+	client.send(encodeConnectAck(connackMsg));
+	return CONNECT_ACCEPTED;
 }
 
-void MqttBroker::handleSubscription(MqttClient client, SubscribeMessage subMsg) {
-	SubscribeAckMessage sendMsg;
-	sendMsg.setType(Type::SUBACK);
-	sendMsg.setPacketIdentifier(subMsg.getPacketIdentifier());
+int MqttBroker::handleSubscribe(MqttClient& client, SubscribeMessage subMsg) {
+	SubscribeAckMessage subackMsg;
+	subackMsg.type = Type::SUBACK;
+	subackMsg.packetIdentifier = subMsg.packetIdentifier;
 
-	std::vector<int> returnCodes;
-	for (auto topic : subMsg.getTopics()) {
+	if (subMsg.headerReserved != 2) {
+		return -1;
+	}
+
+	std::vector<Subscribe_return_codes> returnCodes;
+	for (auto topic : subMsg.topics) {
 		if (0 < topic.second < 3) {
 			subscriptions[topic.first].push_back(std::make_pair(client, topic.second));
-			returnCodes.push_back(topic.second);
+			returnCodes.push_back((Subscribe_return_codes)topic.second);
 		}
 		else {
-			returnCodes.push_back(128); // Magic failure, create enum maybe
+			returnCodes.push_back(SUBSCRIBE_FAILURE);
 		}
 	}
-	sendMsg.setReturnCodes(returnCodes);
-	client.send(encodeSubscribeAck(sendMsg));
+	
+	// Dont forget wildcard
+
+	subackMsg.returnCodes = returnCodes;
+	client.send(encodeSubscribeAck(subackMsg));
+	return 0;
+}
+
+int MqttBroker::handleUnsubscribe(MqttClient& client, UnsubscribeMessage unsubMsg) {
+	std::cout << "handle unsubscribe\n";
+
+	if (unsubMsg.headerReserved != 2) {
+		// error
+		return -1;
+	}
+
+	UnsubscribeAckMessage sendMsg;
+	sendMsg.type = Type::UNSUBACK;
+	sendMsg.packetIdentifier = unsubMsg.packetIdentifier;
+
+	// Dont forget wildcard
+	for (auto topic : unsubMsg.topics) {
+		for (size_t i = 0; i < subscriptions[topic].size(); ++i) {
+			if (subscriptions[topic][i].first == client) {
+				std::cout << "found ya\n";
+				subscriptions[topic].erase(subscriptions[topic].begin() + i);
+				break;
+			}
+		}
+	}
+
+	client.send(encodeUnsubscribeAck(sendMsg));
+	return 0;
 }
 
 void MqttBroker::handlePublish(MqttClient& client, Bytes& data) {
 	PublishMessage msg = decodePublish(data);
-	for (auto subscription : subscriptions[msg.getTopic()]) {
+	for (auto subscription : subscriptions[msg.topic]) {
 		subscription.first.send(data);
 	}
 }
 
 void MqttBroker::handlePing(MqttClient client) {
-	MqttMessage sendMsg;
-	sendMsg.setType(Type::PINGRESP);
+	Message sendMsg;
+	sendMsg.type = Type::PINGRESP;
 	Bytes data(2);
 	data[0] = encodeMqttMessage(sendMsg);
 	client.send(data);
@@ -122,57 +184,145 @@ MqttBroker::MqttBroker() {}
 
 MqttBroker::~MqttBroker() {}
 
-ConnectMessage MqttBroker::decodeConnect(Bytes& data) {
+MqttBroker:: ConnectMessage MqttBroker::decodeConnect(Bytes& data) {
+	std::cout << "Decoding connect\n\n";
+
 	ConnectMessage msg;
-	msg.setType((Type)((data[0] & MASK_TYPE) >> SHIFT_TYPE));
-	msg.setDup(((data[0] & MASK_DUP) >> SHIFT_DUP));
-	msg.setQos((data[0] & MASK_QOS) >> SHIFT_QOS);
-	msg.setRetain(data[0] & MASK_RETAIN);
+	auto bytePtr = data.begin();
+	msg.type = (Type)((*bytePtr & MASK_TYPE) >> SHIFT_TYPE);
 
-	std::cout << "Decoding connect\n";
+	const short messageLength = *++bytePtr;
+	const auto messageEnd = data.begin() + messageLength;
+	const auto protocolLength = (*++bytePtr << 8) | *++bytePtr;
+	msg.protocolName = std::string(bytePtr, (++bytePtr + protocolLength));
+	bytePtr = bytePtr + protocolLength;
 
-	const short remainingLength = data[1];
-	msg.setMsb(data[2]);
-	msg.setLsb(data[3]);
-	const short protocolNameBegin = 4;
-	const short protocolNameEnd = protocolNameBegin + msg.getLsb();
-	msg.setProtocolName(std::string(data.begin() + protocolNameBegin, data.begin() + protocolNameEnd));
+	msg.protocolLevel =(*bytePtr);
+	msg.flags.username = ((*++bytePtr & MASK_FLAG_USERNAME) << SHIFT_FLAG_USERNAME);
+	msg.flags.password =((*bytePtr & MASK_FLAG_PASSWORD) << SHIFT_FLAG_PASSWORD);
+	msg.flags.willRetain = ((*bytePtr & MASK_FLAG_WILL_RETAIN) << SHIFT_FLAG_WILL_RETAIN);
+	msg.flags.willQos = ((*bytePtr & MASK_FLAG_WILL_QOS) << SHIFT_FLAG_WILL_QOS);
+	msg.flags.will = ((*bytePtr & MASK_FLAG_WILL) << SHIFT_FLAG_WILL);
+	msg.flags.cleanSession = ((*bytePtr & MASK_FLAG_CLEAN_SESSION) << SHIFT_FLAG_CLEAN_SESSION);
+	msg.flags.reserved = (*bytePtr & MASK_FLAG_RESERVED);
+	msg.keepAlive = ((*++bytePtr << 8) | *++bytePtr);
+
+	uint8_t clientIdLength = (*++bytePtr << 8) | *++bytePtr;
+	std::cout << "client identifier length: " << (int)clientIdLength << "\n";
+
+	if (clientIdLength > 0) {
+		bytePtr++;
+		msg.clientId = std::string(bytePtr, bytePtr + clientIdLength);
+		bytePtr = bytePtr + clientIdLength-1;
+		std::cout << "client identifier: " << msg.clientId << "\n";
+	} 
+
+	std::cout << "clientId: " << msg.clientId << "\n";
+
+	if (msg.flags.will) {
+		uint8_t willLength = (*++bytePtr << 8) | *++bytePtr;
+		if (willLength > 0) {
+			bytePtr++;
+			msg.clientId = std::string(bytePtr, bytePtr + clientIdLength);
+			bytePtr = bytePtr + clientIdLength - 1;
+			std::cout << "client identifier: " << msg.clientId << "\n";
+		}
+	}
+
+	if (msg.flags.username) {
+		uint8_t usernameLength = (*++bytePtr << 8) | *++bytePtr;
+		std::cout << "usernameLength: " << (int) usernameLength << "\n";
+
+		if (usernameLength > 0) {
+			bytePtr++;
+			msg.username = std::string(bytePtr, bytePtr + usernameLength);
+			std::cout << "username: " << msg.username << "\n";
+			bytePtr = bytePtr + usernameLength - 1;
+		}
+	}
+
+	if (msg.flags.password) {
+		uint8_t passwordLength = (*++bytePtr << 8) | *++bytePtr;
+		std::cout << "passwordLength: " <<(int) passwordLength << "\n";
+
+		if (passwordLength > 0) {
+			bytePtr++;
+			msg.password = std::string(bytePtr, bytePtr + passwordLength);
+			std::cout << "password: " << msg.password << "\n";
+		}
+	}
+
+	std::cout << "\n";
+	std::cout << "Protocol name: " << msg.protocolName << "\n";
+	std::cout << "setProtocolLevel: " << (int)msg.protocolLevel << "\n";
+	std::cout << "username: " << (int)msg.flags.username << "\n";
+	std::cout << "password: " << (int)msg.flags.password << "\n";
+	std::cout << "retain flag: " << (int)msg.flags.willRetain << "\n";
+	std::cout << "qos flag: " << (int)msg.flags.willQos << "\n";
+	std::cout << "will flag: " << (int)msg.flags.will << "\n";
+	std::cout << "clean session flag: " << (int)msg.flags.cleanSession << "\n";
+	std::cout << "reserved flag: " << (int)msg.flags.reserved << "\n";
+	std::cout << "keep alive: " << (int)msg.keepAlive << "\n";
 
 	return msg;
 }
 
-SubscribeMessage MqttBroker::decodeSubscribe(Bytes& data) {
+MqttBroker::SubscribeMessage MqttBroker::decodeSubscribe(Bytes& data) {
 	std::cout << "Decoding subscribe\n";
 	auto bytePtr = data.begin();
 
 	SubscribeMessage msg;
-	msg.setType((Type)((*bytePtr & MASK_TYPE) >> SHIFT_TYPE));
+	msg.type = Type((*bytePtr & MASK_TYPE) >> SHIFT_TYPE);
+	msg.headerReserved = (Type(*bytePtr & MASK_FIXED_HEADER_RESERVED));
 
 	const short messageLength = *++bytePtr;
-	const auto messageEnd = data.begin() + messageLength;
-	msg.setPacketIdentifier((*++bytePtr << 8) | *++bytePtr);
+	const auto messageEnd = (data.begin() + 2) + messageLength;
+	msg.packetIdentifier = ((*++bytePtr << 8) | *++bytePtr);
 
 	std::vector<Topic> topics;
 	while (++bytePtr < messageEnd) {
 		const uint16_t topicLength = (*bytePtr << 8) | *(++bytePtr);
-		auto topicEnd = ++bytePtr + topicLength;
+		const auto topicEnd = ++bytePtr + topicLength;
 		const std::string topicName(bytePtr, topicEnd);
 		bytePtr = topicEnd;
 		const short qos = *bytePtr;
 		topics.push_back(std::make_pair(topicName, qos));
 	}
-	msg.setTopics(topics);
+	msg.topics = topics;
 	return msg;
 }
 
-PublishMessage MqttBroker::decodePublish(Bytes& data) {
+MqttBroker::UnsubscribeMessage MqttBroker::decodeUnsubscribe(Bytes& data) {
+	std::cout << "Decoding unsubscribe\n";
+	auto bytePtr = data.begin();
+
+	UnsubscribeMessage msg;
+	msg.type = (Type((*bytePtr & MASK_TYPE) >> SHIFT_TYPE));
+	msg.headerReserved = (Type(*bytePtr & MASK_FIXED_HEADER_RESERVED));
+
+	const short messageLength = *++bytePtr;
+	const auto messageEnd = (data.begin() + 2) + messageLength;
+	msg.packetIdentifier = (*++bytePtr << 8) | *++bytePtr;
+
+	std::vector<std::string> topics;
+	while (++bytePtr < messageEnd) {
+		const uint16_t topicLength = (*bytePtr << 8) | *++bytePtr;
+		const auto topicEnd = ++bytePtr + topicLength;
+		topics.push_back(std::string(bytePtr, topicEnd));
+		bytePtr = topicEnd -1;
+	}
+	msg.topics = topics;
+	return msg;
+}
+
+MqttBroker::PublishMessage MqttBroker::decodePublish(Bytes& data) {
 	PublishMessage msg;
 	auto bytePtr = data.begin();
 
-	msg.setType((Type)((*bytePtr & MASK_TYPE) >> SHIFT_TYPE));
-	msg.setDup(((*bytePtr & MASK_DUP) >> SHIFT_DUP));
-	msg.setQos((*bytePtr & MASK_QOS) >> SHIFT_QOS);
-	msg.setRetain(*bytePtr & MASK_RETAIN);
+	msg.type = ((Type)((*bytePtr & MASK_TYPE) >> SHIFT_TYPE));
+	msg.dup = (((*bytePtr & MASK_DUP) >> SHIFT_DUP));
+	msg.qos = ((*bytePtr & MASK_QOS) >> SHIFT_QOS);
+	msg.retain = (*bytePtr & MASK_RETAIN);
 
 	const short messageLength = *++bytePtr;
 	const auto messageEnd = data.begin() + messageLength;
@@ -180,19 +330,29 @@ PublishMessage MqttBroker::decodePublish(Bytes& data) {
 	const uint16_t topicLength = (*++bytePtr << 8) | *(++bytePtr);
 	auto topicEnd = ++bytePtr + topicLength;
 
-	msg.setTopic(std::string(bytePtr, topicEnd));
+	msg.topic = std::string(bytePtr, topicEnd);
 	return msg;
 }
 
-Byte MqttBroker::encodeMqttMessage(MqttMessage& msg) {
+// Returns false if str contains other characters than
+// 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+bool MqttBroker::validateClientId(std::string& str) {
+	for (char c : str) {
+		if (!std::isalpha(c) || (c < 0 || c > 9))
+			return false;
+	}
+	return true;
+}
+
+Byte MqttBroker::encodeMqttMessage(Message& msg) {
 	Byte data = 0;
-	data = msg.getType() << SHIFT_TYPE;
+	data = msg.type << SHIFT_TYPE;
 	return data;
 }
 
 Bytes MqttBroker::encodeConnectAck(ConnectAckMessage& msg) {
 	Bytes data;
-	data.push_back(msg.getType() << SHIFT_TYPE);
+	data.push_back(msg.type << SHIFT_TYPE);
 	data.push_back(2);
 	data.push_back(0);
 	data.push_back(0);
@@ -201,14 +361,33 @@ Bytes MqttBroker::encodeConnectAck(ConnectAckMessage& msg) {
 
 Bytes MqttBroker::encodeSubscribeAck(SubscribeAckMessage& msg) {
 	Bytes data;
-	data.push_back(msg.getType() << SHIFT_TYPE);
+	data.push_back(msg.type << SHIFT_TYPE);
 
-	const uint8_t packetIdentifierMsb = (msg.getPacketIdentifier() & 0b1111111100000000) >> 8;
-	const uint8_t packetIdentifierLsb = msg.getPacketIdentifier() & 0b0000000011111111;
+	const uint8_t packetIdentifierMsb = (msg.packetIdentifier & 0b1111111100000000) >> 8;
+	const uint8_t packetIdentifierLsb = msg.packetIdentifier & 0b0000000011111111;
 
 	data.push_back(packetIdentifierMsb);
 	data.push_back(packetIdentifierLsb);
-	for (auto returnCode : msg.getReturnCodes()) {
+	for (auto returnCode : msg.returnCodes) {
+		data.push_back(returnCode);
+	}
+
+	const short messageLength = data.size() - 1;
+	data.insert(data.begin() + 1, messageLength);
+
+	return data;
+}
+
+Bytes MqttBroker::encodeUnsubscribeAck(UnsubscribeAckMessage& msg) {
+	Bytes data;
+	data.push_back(msg.type << SHIFT_TYPE);
+
+	const uint8_t packetIdentifierMsb = (msg.packetIdentifier & 0b1111111100000000) >> 8;
+	const uint8_t packetIdentifierLsb = msg.packetIdentifier & 0b0000000011111111;
+
+	data.push_back(packetIdentifierMsb);
+	data.push_back(packetIdentifierLsb);
+	for (auto returnCode : msg.returnCodes) {
 		data.push_back(returnCode);
 	}
 

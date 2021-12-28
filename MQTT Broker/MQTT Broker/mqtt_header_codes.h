@@ -20,11 +20,44 @@ enum Type : uint8_t {
 	Reserved2 = 15,
 };
 
+enum Connect_return_codes : uint8_t {
+	CONNECT_ACCEPTED = 0,
+	CONNECT_UNACCEPTABLE_PROTOCOL_VERSION = 1,
+	CONNECT_UNACCEPTABLE_IDENTIFIER = 2,
+	CONNECT_SERVER_UNAVAILABLE = 3,
+	CONNECT_BAD_USERNAME_OR_PASSWORD = 4,
+	CONNECT_NOT_AUTHORIZED = 5,
+};
+
+enum Subscribe_return_codes: uint8_t {
+	SUBSCRIBE_MAXIMUM_QOS_0 = 0x00,
+	SUBSCRIBE_MAXIMUM_QOS_1 = 0x01,
+	SUBSCRIBE_MAXIMUM_QOS_2 = 0x02,
+	SUBSCRIBE_FAILURE	 = 0x80,
+};
+
 const uint8_t MASK_TYPE = 0b11110000;
 const uint8_t MASK_DUP = 0b00001000;
 const uint8_t MASK_QOS = 0b00000110;
 const uint8_t MASK_RETAIN = 0b00000001;
+const uint8_t MASK_FIXED_HEADER_RESERVED = 0b00001111;
 
 const short SHIFT_TYPE = 4;
 const short SHIFT_DUP = 3;
 const short SHIFT_QOS = 2;
+
+// Connect
+const uint8_t MASK_FLAG_USERNAME = 0b10000000;
+const uint8_t MASK_FLAG_PASSWORD = 0b01000000;
+const uint8_t MASK_FLAG_WILL_RETAIN = 0b00100000;
+const uint8_t MASK_FLAG_WILL_QOS = 0b00011000;
+const uint8_t MASK_FLAG_WILL = 0b00000100;
+const uint8_t MASK_FLAG_CLEAN_SESSION = 0b00000010;
+const uint8_t MASK_FLAG_RESERVED = 0b00000001;
+
+const short SHIFT_FLAG_USERNAME = 7;
+const short SHIFT_FLAG_PASSWORD = 6;
+const short SHIFT_FLAG_WILL_RETAIN = 5;
+const short SHIFT_FLAG_WILL_QOS = 4;
+const short SHIFT_FLAG_WILL = 2;
+const short SHIFT_FLAG_CLEAN_SESSION = 1;
