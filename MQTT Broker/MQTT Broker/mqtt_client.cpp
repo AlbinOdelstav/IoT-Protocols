@@ -7,16 +7,16 @@ MqttClient::~MqttClient() {}
 MqttClient::MqttClient(Socket& socket) : socket(socket) {}
 
 
-void MqttClient::send(std::vector<unsigned char> msg) {
-	this->socket.send(msg);
+void MqttClient::send(Bytes data) {
+	this->socket.send(data);
 }
 
-std::vector<unsigned char> MqttClient::recv() {
-	auto data = this->socket.recv();
+std::pair<Bytes, short> MqttClient::recv() {
+	std::pair<Bytes, short> data = this->socket.recv();
 	return data;
 }
 
-void MqttClient::close() {
+void MqttClient::close() {	
 	closesocket(this->socket.getSOCKET());
 }
 

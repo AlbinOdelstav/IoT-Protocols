@@ -8,8 +8,9 @@
 #include <vector>
 #include <stdlib.h>
 #include <stdio.h>
-
 #pragma comment (lib, "ws2_32.lib")
+
+using Bytes = std::vector<unsigned char>;
 
 class Socket {
 public:
@@ -20,7 +21,7 @@ public:
 	const int create(const int port);
 	Socket listen();
 	void send(std::vector<unsigned char>&);
-	std::vector<unsigned char> recv();
+	std::pair<Bytes, short> recv();
 	const char* dnsLookup(const char*, const int);
 
 	SOCKET getSOCKET() const;
