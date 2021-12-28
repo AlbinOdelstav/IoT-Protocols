@@ -21,10 +21,6 @@ public:
 
 	struct Message {
 		Type type;
-		bool dup;
-		uint8_t qos;
-		bool retain;
-		unsigned short errorCode;
 		uint16_t packetIdentifier;
 	};
 
@@ -72,6 +68,9 @@ public:
 	};
 
 	struct PublishMessage : Message {
+		bool dup;
+		unsigned short qos;
+		bool retain;
 		std::string topic;
 		std::string payload;
 	};
@@ -80,13 +79,13 @@ public:
 	void handleClient(MqttClient);
 	int handleConnection(MqttClient&, ConnectMessage);
 	int handleSubscribe(MqttClient&, SubscribeMessage);
-	void handleUnsubscribe(MqttClient&, UnsubscribeMessage);
-	void handlePublish(MqttClient&, Bytes&);
-	void handlePing(MqttClient);
+	int handleUnsubscribe(MqttClient&, UnsubscribeMessage);
+	int handlePublish(MqttClient&, Bytes&);
+	void handlePing(MqttClient&);
 	Type peekType(const Byte&);
 	uint8_t peekMessageLength(const Bytes&);
 
-	unsigned char encodeMqttMessage(Message&);
+	Bytes encodeMqttMessage(Message&);
 	Bytes encodeConnectAck(ConnectAckMessage&);
 	Bytes encodeSubscribeAck(SubscribeAckMessage&);
 	Bytes encodeUnsubscribeAck(UnsubscribeAckMessage&);
