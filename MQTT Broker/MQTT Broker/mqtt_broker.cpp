@@ -2,40 +2,44 @@
 
 void MqttBroker::start(const unsigned int port) {
 	Socket listenSocket;
+
 	if (listenSocket.create(port) != 0) {
 		return;
 	}
 
 	while (true) {
 		Socket socket = listenSocket.listen();
-		if (socket.getSOCKET() == INVALID_SOCKET) {
+		if (socket.getSOCKET() != INVALID_SOCKET) {
+			std::thread thread(&MqttBroker::handleClient, this, MqttClient(socket));
+			thread.detach();
+		} else {
 			std::cout << "Accept failed with error: " << WSAGetLastError() << "\n";
 			WSACleanup();
 		}
-
-		std::thread thread(&MqttBroker::handleClient, this, MqttClient(socket));
-		thread.detach();
 	}
 }
 
 void MqttBroker::handleClient(MqttClient& client) {
-	const unsigned short FIXED_HEADER_LENGTH = 2;
 	std::pair<Bytes, short> data = client.recv();
+
 	if (data.second != 0) {
 		client.close();
 		return;
 	}
 
 	if (peekType(data.first[0]) == Type::CONNECT) {
-		std::cout << "Connect\n";
 		if (handleConnection(client, decodeConnect(data.first)) != CONNECT_ACCEPTED) {
-			std::cout << "Connection failed\n";
 			client.close();
 			return;
 		}
 	}
+	else {
+		client.close();
+		return;
+	}
 
 	while (true) {
+		const unsigned short FIXED_HEADER_LENGTH = 2;
 		std::pair<Bytes, short> totalData = client.recv();
 		if (totalData.second != 0) {
 			client.close();
@@ -49,7 +53,6 @@ void MqttBroker::handleClient(MqttClient& client) {
 
 			switch (peekType(data[0])) {
 			case Type::SUBSCRIBE:
-				std::cout << "Subscribe\n";
 				if (handleSubscribe(client, decodeSubscribe(data)) != 0) {
 					client.close();
 					return;
@@ -57,7 +60,6 @@ void MqttBroker::handleClient(MqttClient& client) {
 				break;
 
 			case Type::UNSUBSCRIBE:
-				std::cout << "Unsubscribe\n";
 				if (handleUnsubscribe(client, decodeUnsubscribe(data)) != 0) {
 					client.close();
 					return;
@@ -65,7 +67,6 @@ void MqttBroker::handleClient(MqttClient& client) {
 				break;
 
 			case Type::PUBLISH:
-				std::cout << "Publish\n";
 				if (handlePublish(client, data) != 0) {
 					client.close();
 					return;
@@ -73,14 +74,10 @@ void MqttBroker::handleClient(MqttClient& client) {
 				break;
 
 			case Type::PINGREQ:
-				std::cout << "Ping\n";
 				handlePing(client);
 				break;
 
 			case Type::DISCONNECT:
-				std::cout << "Disconnect\n";
-				// unsubscsribe?
-
 				client.close();
 				return;
 			}
@@ -94,23 +91,20 @@ void MqttBroker::handleClient(MqttClient& client) {
 int MqttBroker::handleConnection(MqttClient& client, ConnectMessage conMsg) {
 	ConnectAckMessage connackMsg;
 	connackMsg.type = Type::CONNACK;
+	connackMsg.returnCode = CONNECT_ACCEPTED;
 
-	// Fix these magic numbers before death hits
-	if (conMsg.protocolName != "MQTT" || conMsg.protocolLevel != 4) {
+	if (conMsg.protocolName != "MQTT" || conMsg.protocolLevel != PROTOCOL_LEVEL) {
 		connackMsg.returnCode = CONNECT_UNACCEPTABLE_PROTOCOL_VERSION;
-		return CONNECT_UNACCEPTABLE_PROTOCOL_VERSION;
 	}
 
 	if (!validateClientId(conMsg.clientId)) {
 		connackMsg.returnCode = CONNECT_UNACCEPTABLE_IDENTIFIER;
-		return CONNECT_UNACCEPTABLE_IDENTIFIER;
 	}
 
-	client.setClientId(conMsg.clientId);
-
 	connackMsg.sessionPresent = 1;
+	client.setClientId(conMsg.clientId);
 	client.send(encodeConnectAck(connackMsg));
-	return CONNECT_ACCEPTED;
+	return connackMsg.returnCode;
 }
 
 int MqttBroker::handleSubscribe(MqttClient& client, SubscribeMessage subMsg) {
@@ -122,18 +116,23 @@ int MqttBroker::handleSubscribe(MqttClient& client, SubscribeMessage subMsg) {
 		return -1;
 	}
 
+	subMtx.lock();
 	std::vector<Subscribe_return_codes> returnCodes;
-	for (auto topic : subMsg.topics) {
+	for (const auto& topic : subMsg.topics) {
 		if (0 < topic.second < 3) {
-			subscriptions[topic.first].push_back(std::make_pair(client, topic.second));
-			returnCodes.push_back((Subscribe_return_codes)topic.second);
+			if (topic.first.find('#') == std::string::npos && topic.first.find('+') == std::string::npos) {
+				subscriptions[topic.first].push_back(std::make_pair(client, topic.second));
+				returnCodes.push_back((Subscribe_return_codes)topic.second);
+			}
+			else {
+				returnCodes.push_back(SUBSCRIBE_FAILURE);
+			}
 		}
 		else {
 			returnCodes.push_back(SUBSCRIBE_FAILURE);
 		}
 	}
-	
-	// Dont forget wildcard
+	subMtx.unlock();
 
 	subackMsg.returnCodes = returnCodes;
 	client.send(encodeSubscribeAck(subackMsg));
@@ -148,8 +147,6 @@ int MqttBroker::handleSubscribe(MqttClient& client, SubscribeMessage subMsg) {
 }
 
 int MqttBroker::handleUnsubscribe(MqttClient& client, UnsubscribeMessage unsubMsg) {
-	std::cout << "handle unsubscribe\n";
-
 	if (unsubMsg.headerReserved != 2) {
 		return -1;
 	}
@@ -158,16 +155,16 @@ int MqttBroker::handleUnsubscribe(MqttClient& client, UnsubscribeMessage unsubMs
 	sendMsg.type = Type::UNSUBACK;
 	sendMsg.packetIdentifier = unsubMsg.packetIdentifier;
 
-	// Dont forget wildcard
-	for (auto topic : unsubMsg.topics) {
+	subMtx.lock();
+	for (auto& topic : unsubMsg.topics) {
 		for (size_t i = 0; i < subscriptions[topic].size(); ++i) {
 			if (subscriptions[topic][i].first == client) {
-				std::cout << "found ya\n";
 				subscriptions[topic].erase(subscriptions[topic].begin() + i);
 				break;
 			}
 		}
 	}
+	subMtx.unlock();
 
 	client.send(encodeUnsubscribeAck(sendMsg));
 	return 0;
@@ -183,35 +180,15 @@ int MqttBroker::handlePublish(MqttClient& client, Bytes& data) {
 	// Dup flag should not be propagated
 	data[0] = data[0] & (0b11110111);
 
+	retainMtx.lock();
 	if (msg.retain) {
 		retainedMessages[msg.topic] = data;
 	}
+	retainMtx.unlock();
 	
-	for (auto subscription : subscriptions[msg.topic]) {
+	for (auto& subscription : subscriptions[msg.topic]) {
 		subscription.first.send(data);
 	}
-	
-	/*
-	*			Hol' on
-	* 
-	* 
-	if (msg.qos == QOS_LEVEL_1) {
-		Message ackMsg { PUBACK, msg.packetIdentifier };
-		client.send(encodeMqttMessage(ackMsg));
-	}
-	else if (msg.qos == QOS_LEVEL_2) {
-		Message recMsg { PUBREC, msg.packetIdentifier };
-		client.send(encodeMqttMessage(recMsg));
-
-		// Wait for PUBREL
-		Bytes data = client.recv();
-		if (peekType(data[0]) == PUBREL) {
-			Message compMsg{ PUBCOMP, msg.packetIdentifier };
-			client.send(encodeMqttMessage(compMsg));
-		}
-	}
-	*/
-
 	return 0;
 }
 
@@ -235,8 +212,6 @@ MqttBroker::MqttBroker() {}
 MqttBroker::~MqttBroker() {}
 
 MqttBroker:: ConnectMessage MqttBroker::decodeConnect(Bytes& data) {
-	std::cout << "Decoding connect\n\n";
-
 	ConnectMessage msg;
 	auto bytePtr = data.begin();
 	msg.type = (Type)((*bytePtr & MASK_TYPE) >> SHIFT_TYPE);
@@ -296,7 +271,6 @@ MqttBroker:: ConnectMessage MqttBroker::decodeConnect(Bytes& data) {
 }
 
 MqttBroker::SubscribeMessage MqttBroker::decodeSubscribe(Bytes& data) {
-	std::cout << "Decoding subscribe\n";
 	auto bytePtr = data.begin();
 
 	SubscribeMessage msg;
@@ -321,7 +295,6 @@ MqttBroker::SubscribeMessage MqttBroker::decodeSubscribe(Bytes& data) {
 }
 
 MqttBroker::UnsubscribeMessage MqttBroker::decodeUnsubscribe(Bytes& data) {
-	std::cout << "Decoding unsubscribe\n";
 	auto bytePtr = data.begin();
 
 	UnsubscribeMessage msg;
@@ -344,8 +317,6 @@ MqttBroker::UnsubscribeMessage MqttBroker::decodeUnsubscribe(Bytes& data) {
 }
 
 MqttBroker::PublishMessage MqttBroker::decodePublish(Bytes& data) {
-	std::cout << "decode publish\n";
-
 	PublishMessage msg;
 	auto bytePtr = data.begin();
 
@@ -373,14 +344,13 @@ MqttBroker::PublishMessage MqttBroker::decodePublish(Bytes& data) {
 // 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
 bool MqttBroker::validateClientId(std::string& str) {
 	for (char c : str) {
-		if (!std::isalpha(c) && (c < 0 && c > 9))
+		if (!std::isalpha(c) && (c < '0' || c > '9'))
 			return false;
 	}
 	return true;
 }
 
 Bytes MqttBroker::encodeMqttMessage(Message& msg) {
-	std::cout << "msg.packetIdentifier: " << msg.packetIdentifier << "\n";
 	Bytes data;
 	data.push_back(msg.type << SHIFT_TYPE);
 
@@ -401,7 +371,7 @@ Bytes MqttBroker::encodeConnectAck(ConnectAckMessage& msg) {
 	data.push_back(msg.type << SHIFT_TYPE);
 	data.push_back(2);
 	data.push_back(0);
-	data.push_back(0);
+	data.push_back(msg.returnCode);
 	return data;
 }
 
