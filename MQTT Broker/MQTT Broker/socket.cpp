@@ -92,7 +92,7 @@ std::pair<Bytes, short> Socket::recv() {
 	std::vector<unsigned char> response(100);
 	if (::recv(socket, (char*)response.data(), response.size(), 0) < 0) {
 		std::cout << "Recv failed: " << WSAGetLastError << "\n";
-		return std::make_pair(response, -1); // Here we go with the magic numbers again
+		return std::make_pair(response, -1);
 	}
 	return std::make_pair(response, 0);
 }
