@@ -68,3 +68,5 @@ const short SHIFT_FLAG_WILL_RETAIN = 5;
 const short SHIFT_FLAG_WILL_QOS = 4;
 const short SHIFT_FLAG_WILL = 2;
 const short SHIFT_FLAG_CLEAN_SESSION = 1;
+
+const short PROTOCOL_LEVEL = 4;

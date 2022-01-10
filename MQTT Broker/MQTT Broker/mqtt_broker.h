@@ -7,6 +7,7 @@
 #include "socket.h"
 #include <map>
 #include <bitset>
+#include <mutex>
 
 using Subscription = std::pair<MqttClient, int>;
 using Topic = std::pair<std::string, int>;
@@ -19,6 +20,9 @@ public:
 	MqttBroker();
 	~MqttBroker();
 
+	void start(const unsigned int port);
+
+private:
 	struct Message {
 		Type type;
 		uint16_t packetIdentifier;
@@ -52,7 +56,7 @@ public:
 	struct SubscribeAckMessage : Message {
 		std::vector<Subscribe_return_codes> returnCodes;
 	};
-	
+
 	struct UnsubscribeMessage : Message {
 		uint16_t headerReserved;
 		std::vector<std::string> topics;
@@ -75,7 +79,6 @@ public:
 		Bytes payload;
 	};
 
-	void start(const unsigned int port);
 	void handleClient(MqttClient&);
 	int handleConnection(MqttClient&, ConnectMessage);
 	int handleSubscribe(MqttClient&, SubscribeMessage);
@@ -90,13 +93,15 @@ public:
 	Bytes encodeSubscribeAck(SubscribeAckMessage&);
 	Bytes encodeUnsubscribeAck(UnsubscribeAckMessage&);
 
-	void decodeFixed(Message&, Bytes&);
 	ConnectMessage decodeConnect(Bytes&);
 	SubscribeMessage decodeSubscribe(Bytes&);
 	UnsubscribeMessage decodeUnsubscribe(Bytes&);
 	PublishMessage decodePublish(Bytes&);
 
 	bool validateClientId(std::string&);
+
 	std::map<std::string, std::vector<Subscription>> subscriptions;
 	std::map<std::string, Bytes> retainedMessages;
+	std::mutex subMtx;
+	std::mutex retainMtx;
 };
