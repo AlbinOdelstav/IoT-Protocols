@@ -65,17 +65,26 @@ int main(int argc, char *argv[]) {
 
 	while (true) {
 		std::string input;
-		OptionValue path(OptionValueType::STRING_TYPE);
+
 		std::string payload;
 		Code code;
 		Type type;
 		uint8_t contentFormat = 0;
-		std::vector<Option> options;
+		std::vector<Coap::Option> options;
 
 		std::cout << "\nEnter path: /";
 		std::getline(std::cin, input);
 
-		path.setValue(input);
+		Coap::Option pathOption {
+			OptionType::UriPath,
+			input,
+			0,
+			pathOption.stringValue.length(),
+			coap.optionNameLookup[OptionType::UriPath],
+			Coap::Option::OptionValueType::STRING_TYPE,
+		};
+
+		options.push_back(pathOption);
 
 		std::cout << "\nEnter type:\n\n";
 		std::cout << "1. Confirmable\n";
@@ -118,21 +127,40 @@ int main(int argc, char *argv[]) {
 		std::cout << "\nEnter payload: ";
 		std::getline(std::cin, payload);
 
-		Option option(OptionType::UriPath, path, coap.optionNameLookup[OptionType::UriPath], path.getString().length());
-		options.push_back(option);
-
 		if (contentFormat!= 0) {
 			const int length = contentFormat == ContentFormatType::textPlainCharsetUtf8 ? 0 : 1;
-			Option contentFormatOption(OptionType::ContentFormat, contentFormat, coap.optionNameLookup[OptionType::ContentFormat], length);
+
+			Coap::Option contentFormatOption {
+				OptionType::ContentFormat,
+				"",
+				contentFormat,
+				length,
+				coap.optionNameLookup[OptionType::ContentFormat],
+				pathOption.valueType = Coap::Option::OptionValueType::INT_TYPE
+			};
+
 			options.push_back(contentFormatOption);
 		}
 
-		// std::cout << "Confirm: ";
+		Coap::CoapMessage coapMessage {
+			coap.getVersion(),
+			type,
+			code,
+			options,
+			0,
+			0,
+			coap.getMessageID(),
+			payload
+		};
 
-		CoapMessage coapMessage(coap.getVersion(), type, code, coap.getMessageID(), 0, options, payload);
+		for (auto option : coapMessage.options) {
+			std::cout << option.stringValue << "\n";
+			std::cout << option.intValue << "\n";
+		}
+
 		std::vector<unsigned char> binaryCoapMessage = coap.encodeCoapMessage(coapMessage);
 		std::vector<unsigned char> response = socket.send(binaryCoapMessage);
-		CoapMessage responseDecoded = coap.decodeCoapMessage(response);
+		Coap::CoapMessage responseDecoded = coap.decodeCoapMessage(response);
 		coap.incrementMessageID();
 
 		std::cout << responseDecoded << "\n";

@@ -5,10 +5,11 @@
 #include <bitset>
 #include <string>
 #include <algorithm>
-#include "coap_message.h"
+#include "coap_header_codes.h"
+
+using Bytes = std::vector<unsigned char>;
 
 class Coap {
-
 public:
 	std::map<uint8_t, std::string> codeLookup {
 		{0x1, "GET"},
@@ -40,7 +41,7 @@ public:
 		{0xA5, "Proxying Not Supported"}
 	};
 
-	std::map<uint8_t, std::string> optionNameLookup{
+	std::map<uint8_t, std::string> optionNameLookup {
 		{1, "If-Match"},
 		{3, "Uri-Host"},
 		{4, "ETag"},
@@ -75,13 +76,68 @@ public:
 
 	const unsigned short HEADER_DELIMITER = 0xFF;
 
-	std::vector<unsigned char> encodeCoapMessage(CoapMessage& coapMessage);
-	void encodeHeader(std::vector<unsigned char>& data, CoapMessage& coapMessage);
-	void encodeMessageID(std::vector<unsigned char>& data, CoapMessage& coapMessage);
-	void encodeOptions(std::vector<unsigned char>& data, CoapMessage& coapMessage);
+	struct Option {
+		enum OptionValueType {
+			STRING_TYPE, INT_TYPE
+		};
 
-	CoapMessage decodeCoapMessage(std::vector<unsigned char>& data);
-	std::vector<Option> decodeOptions(std::vector<unsigned char>& data, int index);
+		OptionType type;
+		std::string stringValue;
+		uint32_t intValue;
+		uint16_t length;
+		std::string name;
+
+		OptionValueType valueType;
+	};
+
+	struct CoapMessage {
+		uint8_t version;
+		Type type;
+		Code code;
+		std::vector<Option> options;
+		uint8_t tokenLength;
+		uint32_t token;
+		uint16_t messageID;
+		std::string payload;
+
+		friend std::ostream& operator<<(std::ostream& os, const CoapMessage& msg) {
+			os << "\n-----------------------------\n";
+			os << "         COAP MESSAGE        \n";
+			os << "-----------------------------\n\n";
+
+			os << "Version: " + std::to_string(msg.version) + "\n";
+			os << "Type: " + std::to_string(msg.type) + "\n";
+			os << "TokenLength: " + std::to_string(msg.tokenLength) + "\n";
+			os << "Code: " + std::to_string(msg.code) + "\n";
+			os << "MessageID: " + std::to_string(msg.messageID) + "\n";
+			os << "\n";
+
+			for (size_t i = 0; i < msg.options.size(); ++i) {
+				os << "Option #" << (i + 1) << ": " << msg.options[i].name << "\n";
+				os << "  Length: " + std::to_string(msg.options[i].length) + "\n";
+				if (msg.options[i].valueType == Option::OptionValueType::STRING_TYPE) {
+					os << "  Value: " + msg.options[i].stringValue + "\n";
+				}
+				else {
+					os << "  Value: " + std::to_string(msg.options[i].intValue) + "\n";
+				}
+				os << "\n";
+			}
+			os << "Payload: ";
+			os << msg.payload << "\n";
+			os << "\n-----------------------------\n";
+
+			return os;
+		};
+	};
+
+	Bytes encodeCoapMessage(CoapMessage& coapMessage);
+	void encodeHeader(Bytes& data, CoapMessage& coapMessage);
+	void encodeMessageID(Bytes& data, CoapMessage& coapMessage);
+	void encodeOptions(Bytes& data, CoapMessage& coapMessage);
+
+	CoapMessage decodeCoapMessage(Bytes& data);
+	std::vector<Option> decodeOptions(Bytes& data, int index);
 
 	uint8_t getVersion() const;
 	uint16_t getMessageID() const;
