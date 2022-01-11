@@ -1,6 +1,7 @@
 CoAP Client/CoAP\ Client.sln
 CoAP Client/Release/
 CoAP Client/.vs/
+CoAP Client/x64/
 CoAP Client/CoAP\ Client/Release/
 
 MQTT Broker/MQTT\ Broker.sln
